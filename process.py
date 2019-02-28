@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 from glob import glob
 from os import path
 from sys import argv
