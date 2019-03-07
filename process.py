@@ -56,7 +56,7 @@ def load(basename):
         return (np.transpose(mask), np.transpose(dist), np.transpose(skel), skel_length)
 
 
-def run(basename):
+def run(basename, mask_endcaps, use_median):
     ims = load(basename)
     if ims is not None:
         print(basename)
@@ -144,10 +144,11 @@ def run(basename):
         plt.savefig(skel_file)
         plt.close()
 
-        # blank out an area around the ends
-        for (i, j) in ends:
-            (rr, cc) = draw.circle(i, j, MASK_RADIUS, dist.shape)
-            dist[rr, cc] = 0
+        if mask_endcaps:
+            # blank out an area around the ends
+            for (i, j) in ends:
+                (rr, cc) = draw.circle(i, j, MASK_RADIUS, dist.shape)
+                dist[rr, cc] = 0
 
         plt.figure()
         plt.imshow(dist)
@@ -157,12 +158,15 @@ def run(basename):
         if len(pixels) < MIN_PIXELS:
             print("Couldn't calculate width - too few pixels: {}".format(len(pixels)))
         else:
-            mean_width = np.mean(pixels)
+            if use_median:
+                mean_width = np.median(pixels)
+            else:
+                mean_width = np.mean(pixels)
             return (skel_file, mean_width, skel_length, extra_len)
         return None
 
 
-def do_dir(d):
+def do_dir(d, mask_endcaps, use_median):
     print(d)
     dirname = d
     if dirname[-1] == "/":
@@ -173,7 +177,7 @@ def do_dir(d):
             print(f)
             if not "skel" in f:
                 try:
-                    res = run(f.replace(".txt", ""))
+                    res = run(f.replace(".txt", ""), mask_endcaps, use_median)
                 except:
                     print(sys.exc_info()[0])
                 if res is not None:
@@ -202,6 +206,8 @@ def index():
             <label>Dir: <input type="text" name="dir"/></label></br>
             <label>Skip when length below: <input type="number" name="threshold" value="0"/></label></br>
             <label>Auto accept all<input type="checkbox" name="accept_all"/></label></br>
+            <label>Exclude endcaps<input type="checkbox" name="mask_endcaps" checked/></label></br>
+            <label>Use median<input type="checkbox" name="use_median"/></label></br>
             <button>Start</button>
         </form>
     """
@@ -213,7 +219,9 @@ def start():
     dir = request.args.get("dir")
     threshold = float(request.args.get("threshold"))
     accept_all = bool(request.args.get("accept_all"))
-    gen = do_dir(dir)
+    mask_endcaps = bool(request.args.get("mask_endcaps"))
+    use_median = bool(request.args.get("use_median"))
+    gen = do_dir(dir, mask_endcaps, use_median)
     return do("start")
 
 
