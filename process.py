@@ -202,7 +202,7 @@ accept_all = False
 @app.route("/")
 def index():
     return """
-        <form action="/start" method="GET">
+        <form action="/start" method="POST">
             <label>Dir: <input type="text" name="dir"/></label></br>
             <label>Skip when length below: <input type="number" name="threshold" value="0"/></label></br>
             <label>Auto accept all<input type="checkbox" name="accept_all"/></label></br>
@@ -212,21 +212,22 @@ def index():
         </form>
     """
 
-@app.route("/start")
+@app.route("/start", methods=['POST'])
 def start():
     global gen
     global threshold, accept_all
-    dir = request.args.get("dir")
-    threshold = float(request.args.get("threshold"))
-    accept_all = bool(request.args.get("accept_all"))
-    mask_endcaps = bool(request.args.get("mask_endcaps"))
-    use_median = bool(request.args.get("use_median"))
+    dir = request.form.get("dir")
+    threshold = float(request.form.get("threshold"))
+    accept_all = bool(request.form.get("accept_all"))
+    mask_endcaps = bool(request.form.get("mask_endcaps"))
+    use_median = bool(request.form.get("use_median"))
     gen = do_dir(dir, mask_endcaps, use_median)
     return do("start")
 
 
-@app.route("/do/<cmd>")
-def do_route(cmd):
+@app.route("/do", methods=['POST'])
+def do_route():
+    cmd = request.form.get("cmd")
     return do(cmd)
 
 def do(cmd):
@@ -249,11 +250,13 @@ def do(cmd):
         script = "<script>window.addEventListener('keydown', e => document.getElementById(e.key).click())</script>"
     return """<img src="data:image/png;base64,{}" />
               <br/>Len: {}<br/>
-              <a id="y" href="/do/yes">Yes</a><br/>
-              <a id="n" href="/do/no">No</a>
+              <form method="POST" action="/do">
+                <button id="y" name="cmd" value="yes">Yes</button>
+                <button id="n" name="cmd" value="no">No</button>
+              </form>
               {}""".format(
         im, l, script
     )
 
 if __name__ == "__main__":
-    app.run()
+    app.run(threaded=False)
