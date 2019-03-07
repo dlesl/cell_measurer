@@ -3,7 +3,7 @@ from glob import glob
 from os import path
 from sys import argv
 import sys
-from mahotas import bwperim
+from mahotas import bwperim, distance
 import numpy as np
 import numpy.polynomial.polynomial as poly
 from numpy.linalg import norm
@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from skimage import draw
 from io import BytesIO
 import base64
+from skimage.morphology import skeletonize
+from skan import csr
 
 MIN_AREA = 20
 MASK_RADIUS = 7  # radius to remove around end caps
@@ -19,54 +21,54 @@ MIN_PIXELS = 5  # minimum number of pixels for width calculation
 
 
 def load(basename):
-    fname = basename + ".csv"
-    lines = [l.strip().split(",") for l in open(fname)]
+    fname = basename + ".txt"
+    lines = [l.strip().split("\t") for l in open(fname)]
     lines = lines[1:]
     if len(lines) < MIN_AREA:
         return None
-    sfname = basename + "-skel.csv"
-    slines = [l.strip().split(",") for l in open(sfname)]
-    slines = slines[1:]
     xs = [int(l[0]) for l in lines]
     ys = [int(l[1]) for l in lines]
-    vs = [float(l[2]) for l in lines]
-
-    # load skeleton
-    sxs = [int(l[0]) for l in slines]
-    sys = [int(l[1]) for l in slines]
-    svs = [0 if int(l[2]) == 0 else 1 for l in slines]
-    assert np.array_equal(xs, sxs)
-    assert np.array_equal(ys, sys)
-
+    assert all((l[2] == '255' for l in lines))
     min_x = min(xs) - 1
     min_y = min(ys) - 1
-    im = np.zeros((max(xs) - min_x + 2, max(ys) - min_y + 2))
-    mask = np.zeros(im.shape)
-    skel = np.zeros(im.shape)
-    for (x, y, v, sv) in zip(xs, ys, vs, svs):
-        im[x - min_x, y - min_y] = v
+    mask = np.zeros((max(xs) - min_x + 2, max(ys) - min_y + 2))
+    for (x, y) in zip(xs, ys):
         mask[x - min_x, y - min_y] = 1
-        skel[x - min_x, y - min_y] = sv
-    (h, w) = im.shape
+    skel = skeletonize(mask)
+    dist = distance(np.invert(skel))
+    # plt.figure()
+    # plt.imshow(skel)
+    # plt.savefig(basename + '_skeleton.png')
+    # plt.close()
+    lengths = csr.summarise(skel)
+    if lengths.shape[0] is not 1:
+        print("%d branches found, skipping `%s`" % (lengths.shape[0], basename))
+        plt.figure()
+        plt.imshow(skel)
+        plt.savefig(basename + 'branched_skeleton.png')
+        plt.close()
+    skel_length = lengths['branch-distance'].values[0]
+    skel = skel.astype(int)
+    (h, w) = mask.shape
     if w > h:
-        return (mask, im, skel)
+        return (mask, dist, skel, skel_length)
     else:
-        return (np.transpose(mask), np.transpose(im), np.transpose(skel))
+        return (np.transpose(mask), np.transpose(dist), np.transpose(skel), skel_length)
 
 
 def run(basename):
     ims = load(basename)
     if ims is not None:
         print(basename)
-        (mask, im, skel) = ims
+        (mask, dist, skel, skel_length) = ims
         perim = bwperim(mask)
-        im[perim == 0] = 0
-        # plt.figure()
-        # plt.imshow(im)
-        # plt.savefig(basename + ".png")
-        # plt.show()
-        # plt.close()
-        (h, w) = im.shape
+        dist[perim == 0] = 0
+        dist = np.sqrt(dist) # mahotas.distance returns squared distances
+        plt.figure()
+        plt.imshow(dist)
+        plt.savefig(basename + ".png")
+        plt.close()
+        (h, w) = dist.shape
         # find the ends of the skeleton - pixels where only one neighbour == 1
         ends = []
         for j in range(w):
@@ -85,10 +87,10 @@ def run(basename):
                     if nb == 1:
                         ends.append((i, j))
         plt.figure()
-        plt.imshow(im + skel)
+        plt.imshow(dist + skel)
 
         if len(ends) != 2:
-            print("Something went wrong, only one end found!!!")
+            print("Something went wrong, %d ends found!!!" % len(ends))
             plt.figure()
             plt.imshow(skel)
             plt.savefig(basename + "broken_end_detection.png")
@@ -99,8 +101,8 @@ def run(basename):
         extra_len = 0
 
         for (i, j) in ends:
-            end_mask = np.zeros(im.shape)
-            (rr, cc) = draw.circle(i, j, END_RADIUS, im.shape)
+            end_mask = np.zeros(dist.shape)
+            (rr, cc) = draw.circle(i, j, END_RADIUS, dist.shape)
             end_mask[rr, cc] = 1
 
             end_skel = np.copy(skel) * end_mask
@@ -140,30 +142,23 @@ def run(basename):
 
         skel_file = BytesIO()
         plt.savefig(skel_file)
-        # plt.show()
         plt.close()
 
         # blank out an area around the ends
         for (i, j) in ends:
-            (rr, cc) = draw.circle(i, j, MASK_RADIUS, im.shape)
-            im[rr, cc] = 0
+            (rr, cc) = draw.circle(i, j, MASK_RADIUS, dist.shape)
+            dist[rr, cc] = 0
 
         plt.figure()
-        plt.imshow(im)
-        # plt.show()
+        plt.imshow(dist)
         plt.savefig(basename + "-masked.png")
         plt.close()
-        pixels = im[im != 0]
+        pixels = dist[dist != 0]
         if len(pixels) < MIN_PIXELS:
             print("Couldn't calculate width - too few pixels: {}".format(len(pixels)))
         else:
             mean_width = np.mean(pixels)
-            # load skeleton length
-            fname = basename + "-skel_info.csv"
-            lines = [l.strip().split(",") for l in open(fname)]
-            skel_length = float(lines[1][8])
-            branches = int(lines[1][0])
-            return (skel_file, mean_width, skel_length, extra_len, branches)
+            return (skel_file, mean_width, skel_length, extra_len)
         return None
 
 
@@ -174,16 +169,16 @@ def do_dir(d):
         dirname = dirname[:-1]
     with open(dirname + "-res.tsv", "w") as out:
         print("mean_width\tskel_length", file=out)
-        for f in glob(path.join(d, "*.csv")):
+        for f in glob(path.join(d, "*.txt")):
             print(f)
             if not "skel" in f:
                 try:
-                    res = run(f.replace(".csv", ""))
+                    res = run(f.replace(".txt", ""))
                 except:
                     print(sys.exc_info()[0])
                 if res is not None:
-                    (im, w, l, extra, branches) = res
-                    resp = yield (im, l + extra, branches)
+                    (im, w, l, extra) = res
+                    resp = yield (im, l + extra)
                     print(resp)
                     if resp:
                         print("{}\t{}".format(w, l + extra), file=out)
@@ -230,12 +225,12 @@ def do(cmd):
     global gen
     global threshold, accept_all
     try:
-        im, l, branches = gen.send(None if cmd == "start" else cmd == "yes")
+        im, l = gen.send(None if cmd == "start" else cmd == "yes")
     except StopIteration:
         return '<h1>Done</h1><p><a href="/">New analysis</a></p>'
-    im = base64.encodestring(im.getvalue()).decode("utf8")
+    im = base64.encodebytes(im.getvalue()).decode("utf8")
     if accept_all:
-        if branches == 1 and (threshold == 0 or l > threshold):
+        if threshold == 0 or l > threshold:
             aa = "y"
         else:
             aa = "n"
@@ -244,13 +239,12 @@ def do(cmd):
         )
     else:
         script = "<script>window.addEventListener('keydown', e => document.getElementById(e.key).click())</script>"
-    return """<h2>{} branches</h2>
-              <img src="data:image/png;base64,{}" />
+    return """<img src="data:image/png;base64,{}" />
               <br/>Len: {}<br/>
               <a id="y" href="/do/yes">Yes</a><br/>
               <a id="n" href="/do/no">No</a>
               {}""".format(
-        branches, im, l, script
+        im, l, script
     )
 
 if __name__ == "__main__":

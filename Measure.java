@@ -41,7 +41,7 @@ public class Measure implements PlugIn {
 		File[] files = new File(dir).listFiles((_dir, name) -> name.toLowerCase().endsWith(".tif"));
 		for (File f : files) {
 			closeAll();
-			String outTest = out + "DUP_" + f.getName().replace(".tif", "-geoddist-0.csv");
+			String outTest = out + "DUP_" + f.getName().replace(".tif", "-0.txt");
 			if (!new File(outTest).exists())
 				if (!actuallyRun(f.getAbsolutePath(), out)) {
 					return;
@@ -85,46 +85,11 @@ public class Measure implements PlugIn {
 		IJ.setBackgroundColor(255, 255, 255);
 		IJ.run(im, "Clear Outside", "");
 		IJ.run(im, "Select All", "");
-		ImagePlus skel = im.duplicate();
-		skel.show();
-		skel.setActivated();
-		IJ.run(skel, "Skeletonize", null);
-		int[] ids_before = WindowManager.getIDList();
-		IJ.run(skel, "Geodesic Distance Map", "marker=" + skel.getTitle() + " mask=" + im.getTitle()
-				+ " distances=[Chessknight (5,7,11)] output=[32 bits] normalize");
-		int[] ids_after = WindowManager.getIDList();
-
-		int geo_id = Arrays.stream(ids_after).filter(c -> Arrays.stream(ids_before).noneMatch(a -> a == c)).findFirst()
-				.getAsInt();
-		ImagePlus geo = WindowManager.getImage(geo_id);
-
 		rois.deselect();
 		for (int roi : rois.getIndexes()) {
 			rois.deselect();
-			rois.select(geo, roi);
-			IJ.run(geo, "Save XY Coordinates...", "save=[" + out + geo.getTitle() + "-" + roi + ".csv]");
-		}
-		skel.show();
-		skel.setActivated();
-		rois.deselect();
-		for (int roi : rois.getIndexes()) {
-			skel.show();
-			skel.setActivated();
-			rois.deselect();
-			ImagePlus cropped = skel.duplicate();
-			cropped.show();
-			cropped.setActivated();
-
-			IJ.setBackgroundColor(255, 255, 255);
-			rois.deselect();
-			rois.select(cropped, roi);
-			IJ.run(cropped, "Clear Outside", "");
-			IJ.run(cropped, "Save XY Coordinates...", "save=[" + out + geo.getTitle() + "-" + roi + "-skel.csv]");
-			IJ.run(cropped, "Analyze Skeleton (2D/3D)", "prune=none");
-			IJ.saveAs("Results", out + geo.getTitle() + "-" + roi + "-skel_info.csv");
-			IJ.getImage().close();
-			cropped.changes = false;
-			cropped.close();
+			rois.select(im, roi);
+			IJ.run(im, "Save XY Coordinates...", "save=[" + out + im.getTitle() + "-" + roi + ".txt]");
 		}
 		return true;
 	}

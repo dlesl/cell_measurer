@@ -14,29 +14,28 @@ Fiji window and pressing 'Run'. Select a folder containing input files
 be skipped. Cells are identified using 'Threshold', and 'Analyze
 Particles'. You may need to adjust the parameters in the macro for
 this to work well. After this stage, the macro pauses to allow you to
-correct or remove any cells that were incorrectly detected.
-
-Cells are then skeletonised to measure their length, and the distance
-of the cell's outline from this skeleton is calculated using the
-[Geodesic Distance Map](https://imagej.net/MorphoLibJ) plugin.
-
-<img title="Example phase contrast image" src="examples/phase.png" width="200">
-<img title="Example skeleton" src="examples/skel.png" width="200">
-<img title="Example distance map" src="examples/dist.png" width="200">
+correct or remove any cells that were incorrectly detected. The cells' 
+pixels are then output to text files for further analysis.
 
 ### A Python script (`process.py`)
 
 This requires Python 3.
 
-This script processes the files created by the ImageJ macro. To the
-final cell length, it extends the skeleton to the ends of the cell.
+This script processes the files created by the ImageJ macro. First,
+the skeleton is found using `skimage.morphology.skeletonize`. This
+skeleton is analysed using [skan](https://jni.github.io/skan/) to
+determine its length and the number of branches.  Branched skeletons
+are not processed. We then extend the skeleton to the end of the cell,
+to determine its length.
 
 <img title="Example of skeleton extension" src="examples/skel_extension.png" width="400">
 
-To find the mean cell width, excluding the end caps, it removes all
-pixels within a defined radius from the ends of the skeleton. You can
-customise this by changing `MASK_RADIUS`. This gives us just the
-outline of the mid part of the cell.
+To find the cell width, we calculate the distance of the cell's
+perimeter from the skeleton using `mahotas.distance`. To exclude the
+end caps, we remove all pixels within a defined radius from the ends
+of the skeleton. You can customise this by changing
+`MASK_RADIUS`. This gives us just the outline of the mid part of the
+cell.
 
 <img title="Example of cell width" src="examples/masked_endcaps.png" width="400">
 
