@@ -176,6 +176,7 @@ def do_dir(d, mask_endcaps, use_median):
         for f in glob(path.join(d, "*.txt")):
             print(f)
             if not "skel" in f:
+                res = None
                 try:
                     res = run(f.replace(".txt", ""), mask_endcaps, use_median)
                 except:
