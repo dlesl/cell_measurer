@@ -59,7 +59,6 @@ def load(basename):
 def run(basename, mask_endcaps, use_median):
     ims = load(basename)
     if ims is not None:
-        print(basename)
         (mask, dist, skel, skel_length) = ims
         perim = bwperim(mask)
         dist[perim == 0] = 0
@@ -167,24 +166,21 @@ def run(basename, mask_endcaps, use_median):
 
 
 def do_dir(d, mask_endcaps, use_median):
-    print(d)
     dirname = d
     if dirname[-1] == "/":
         dirname = dirname[:-1]
     with open(dirname + "-res.tsv", "w") as out:
         print("mean_width\tskel_length", file=out)
         for f in glob(path.join(d, "*.txt")):
-            print(f)
             if not "skel" in f:
                 res = None
                 try:
                     res = run(f.replace(".txt", ""), mask_endcaps, use_median)
-                except:
-                    print(sys.exc_info()[0])
+                except Exception as e:
+                    print(e)
                 if res is not None:
                     (im, w, l, extra) = res
                     resp = yield (im, l + extra)
-                    print(resp)
                     if resp:
                         print("{}\t{}".format(w, l + extra), file=out)
 
